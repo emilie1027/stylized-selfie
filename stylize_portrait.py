@@ -36,7 +36,7 @@ def stylize(network, initial, content, styles, iterations,
 
     # compute content features in feedforward mode
     g = tf.Graph()
-    with g.as_default(), g.device('/cpu:0'), tf.Session() as sess:
+    with g.as_default(), g.device('/gpu:0'), tf.Session() as sess:
         image = tf.placeholder('float', shape=shape)
         net, mean_pixel = vgg.net(network, image)
         content_pre = np.array([vgg.preprocess(content, mean_pixel)])
@@ -46,7 +46,7 @@ def stylize(network, initial, content, styles, iterations,
     # compute style features in feedforward mode
     for i in range(len(styles)):
         g = tf.Graph()
-        with g.as_default(), g.device('/cpu:0'), tf.Session() as sess:
+        with g.as_default(), g.device('/gpu:0'), tf.Session() as sess:
             image = tf.placeholder('float', shape=style_shapes[i])
             net, _ = vgg.net(network, image)
             style_pre = np.array([vgg.preprocess(styles[i], mean_pixel)])
@@ -72,15 +72,16 @@ def stylize(network, initial, content, styles, iterations,
 
         # content loss
         ###introduce modified feature map
-        mod = style_features[0][CONTENT_LAYER] / (
-                content_features[CONTENT_LAYER] + 1e-4)
-        mod = content_features[CONTENT_LAYER] * mod
-        content_loss = content_weight * (2 * tf.nn.l2_loss(
-                mod - content_features[CONTENT_LAYER]) /
-                content_features[CONTENT_LAYER].size)
-        #content_loss = content_weight * (2 * tf.nn.l2_loss(
-        #        net[CONTENT_LAYER] - content_features[CONTENT_LAYER]) /
-        #        content_features[CONTENT_LAYER].size)
+    	mod = style_features[0][CONTENT_LAYER] / (
+        	content_features[CONTENT_LAYER] + 1e-4)
+    	mod = np.maximum(
+        	np.minimum(mod, np.full(mod.shape, 5, np.float32)), 
+        	np.full(mod.shape, 0.7, np.float32))
+    	mod = content_features[CONTENT_LAYER] * mod
+        
+	content_loss = content_weight * (2 * tf.nn.l2_loss(
+                net[CONTENT_LAYER] - mod) /
+                mod.size)
         # style loss
         style_loss = 0
         for i in range(len(styles)):
