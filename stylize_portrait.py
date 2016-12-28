@@ -51,13 +51,11 @@ def stylize(network, initial, content, styles, iterations,
             net, _ = vgg.net(network, image)
             style_pre = np.array([vgg.preprocess(styles[i], mean_pixel)])
             for layer in STYLE_LAYERS:
-                features = net[layer].eval(feed_dict={image: style_pre})
-                features = np.reshape(features, (-1, features.shape[3]))
-                gram = np.matmul(features.T, features) / features.size
-                style_features[i][layer] = gram
-            ###compute style content feature
-            style_features[i][CONTENT_LAYER] = net[CONTENT_LAYER].eval(
-                    feed_dict={image: style_pre})
+                style_features[i][layer] = _style_layer_gram(net[layer]).eval(
+                        feed_dict={image: style_pre})
+            # ###compute style content feature
+            # style_features[i][CONTENT_LAYER] = net[CONTENT_LAYER].eval(
+            #         feed_dict={image: style_pre})
 
     # make stylized image using backpropogation
     with tf.Graph().as_default():
@@ -71,27 +69,26 @@ def stylize(network, initial, content, styles, iterations,
         net, _ = vgg.net(network, image)
 
         # content loss
-        ###introduce modified feature map
-    	mod = style_features[0][CONTENT_LAYER] / (
-        	content_features[CONTENT_LAYER] + 1e-4)
-    	mod = np.maximum(
-        	np.minimum(mod, np.full(mod.shape, 5, np.float32)), 
-        	np.full(mod.shape, 0.7, np.float32))
-    	mod = content_features[CONTENT_LAYER] * mod
-        
-	content_loss = content_weight * (2 * tf.nn.l2_loss(
-                net[CONTENT_LAYER] - mod) /
-                mod.size)
+        content_loss = content_weight * (2 * tf.nn.l2_loss(
+                net[CONTENT_LAYER] - content_features[CONTENT_LAYER]) /
+                content_features[CONTENT_LAYER].size)
+        # ###introduce modified feature map
+    	# mod = style_features[0][CONTENT_LAYER] / (
+        # 	content_features[CONTENT_LAYER] + 1e-4)
+    	# mod = np.maximum(
+        # 	np.minimum(mod, np.full(mod.shape, 5, np.float32)),
+        # 	np.full(mod.shape, 0.7, np.float32))
+    	# mod = content_features[CONTENT_LAYER] * mod
+        #
+        # content_loss = content_weight * (2 * tf.nn.l2_loss(
+        #         net[CONTENT_LAYER] - mod) /
+        #         mod.size)
         # style loss
         style_loss = 0
         for i in range(len(styles)):
             style_losses = []
             for style_layer in STYLE_LAYERS:
-                layer = net[style_layer]
-                _, height, width, number = map(lambda i: i.value, layer.get_shape())
-                size = height * width * number
-                feats = tf.reshape(layer, (-1, number))
-                gram = tf.matmul(tf.transpose(feats), feats) / size
+                gram = _style_layer_gram(net[style_layer])
                 style_gram = style_features[i][style_layer]
                 style_losses.append(2 * tf.nn.l2_loss(gram - style_gram) / style_gram.size)
             style_loss += style_weight * style_blend_weights[i] * reduce(tf.add, style_losses)
@@ -136,7 +133,15 @@ def stylize(network, initial, content, styles, iterations,
                         (None if last_step else i),
                         vgg.unprocess(best.reshape(shape[1:]), mean_pixel)
                     )
+def _style_layer_gram(x):
+    _, h, w, d = map(lambda i: i.value, x.get_shape())
+    x = tf.reshape(x, (-1, x))
+    return _gram_matrix(x, h * w, d)
 
+def _gram_matrix(x, area, depth):
+    feats = tf.reshape(x, (area, depth))
+    gram = tf.matmul(tf.transpose(feats), feats) / area
+    return gram
 
 def _tensor_size(tensor):
     from operator import mul

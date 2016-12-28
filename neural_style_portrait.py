@@ -96,8 +96,10 @@ def main():
         style_scale = STYLE_SCALE
         if options.style_scales is not None:
             style_scale = options.style_scales[i]
+        style_images[i] = scipy.misc.imresize(style_images[i], style_scale *
+                target_shape[1] / style_images[i].shape[1])
         ### resize style image to the same as content image
-        style_images[i] = scipy.misc.imresize(style_images[i], target_shape)
+        ###style_images[i] = scipy.misc.imresize(style_images[i], target_shape)
 
     style_blend_weights = options.style_blend_weights
     if style_blend_weights is None:
