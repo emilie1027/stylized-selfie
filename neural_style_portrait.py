@@ -17,6 +17,7 @@ TV_WEIGHT = 1e2
 LEARNING_RATE = 1e1
 STYLE_SCALE = 1.0
 ITERATIONS = 1000
+PRINT_ITERATIONS = 50
 VGG_PATH = 'imagenet-vgg-verydeep-19.mat'
 
 
@@ -37,7 +38,7 @@ def build_parser():
             metavar='ITERATIONS', default=ITERATIONS)
     parser.add_argument('--print-iterations', type=int,
             dest='print_iterations', help='statistics printing frequency',
-            metavar='PRINT_ITERATIONS')
+            metavar='PRINT_ITERATIONS', default=PRINT_ITERATIONS)
     parser.add_argument('--checkpoint-output',
             dest='checkpoint_output', help='checkpoint output format, e.g. output%%s.jpg',
             metavar='OUTPUT')

@@ -19,7 +19,7 @@ except NameError:
 
 def stylize(network, initial, content, styles, iterations,
         content_weight, style_weight, style_blend_weights, tv_weight,
-        learning_rate, print_iterations=None, checkpoint_iterations=None):
+        learning_rate, print_iterations, checkpoint_iterations=None):
     """
     Stylize images.
 
@@ -51,7 +51,8 @@ def stylize(network, initial, content, styles, iterations,
             net, _ = vgg.net(network, image)
             style_pre = np.array([vgg.preprocess(styles[i], mean_pixel)])
             for layer in STYLE_LAYERS:
-                style_features[i][layer] = _style_layer_gram(net[layer]).eval(
+                _, h, w, d = map(lambda i: i.value, net[layer].get_shape())
+                style_features[i][layer] = _gram_matrix(net[layer], h * w, d).eval(
                         feed_dict={image: style_pre})
             # ###compute style content feature
             # style_features[i][CONTENT_LAYER] = net[CONTENT_LAYER].eval(
@@ -69,29 +70,9 @@ def stylize(network, initial, content, styles, iterations,
         net, _ = vgg.net(network, image)
 
         # content loss
-        content_loss = content_weight * (2 * tf.nn.l2_loss(
-                net[CONTENT_LAYER] - content_features[CONTENT_LAYER]) /
-                content_features[CONTENT_LAYER].size)
-        # ###introduce modified feature map
-    	# mod = style_features[0][CONTENT_LAYER] / (
-        # 	content_features[CONTENT_LAYER] + 1e-4)
-    	# mod = np.maximum(
-        # 	np.minimum(mod, np.full(mod.shape, 5, np.float32)),
-        # 	np.full(mod.shape, 0.7, np.float32))
-    	# mod = content_features[CONTENT_LAYER] * mod
-        #
-        # content_loss = content_weight * (2 * tf.nn.l2_loss(
-        #         net[CONTENT_LAYER] - mod) /
-        #         mod.size)
+        content_loss = _content_loss_sum(net, content_features)
         # style loss
-        style_loss = 0
-        for i in range(len(styles)):
-            style_losses = []
-            for style_layer in STYLE_LAYERS:
-                gram = _style_layer_gram(net[style_layer])
-                style_gram = style_features[i][style_layer]
-                style_losses.append(2 * tf.nn.l2_loss(gram - style_gram) / style_gram.size)
-            style_loss += style_weight * style_blend_weights[i] * reduce(tf.add, style_losses)
+        style_loss = _style_loss_sum(net, style_features, style_blend_weights)
         # total variation denoising
         tv_y_size = _tensor_size(image[:,1:,:,:])
         tv_x_size = _tensor_size(image[:,:,1:,:])
@@ -101,13 +82,13 @@ def stylize(network, initial, content, styles, iterations,
                 (tf.nn.l2_loss(image[:,:,1:,:] - image[:,:,:shape[2]-1,:]) /
                     tv_x_size))
         # overall loss
-        loss = content_loss + style_loss + tv_loss
+        loss = content_weight * content_loss + style_weight * style_loss + tv_loss
 
         # optimizer setup
         train_step = tf.train.AdamOptimizer(learning_rate).minimize(loss)
 
         def print_progress(i, last=False):
-            stderr.write('Iteration %d/%d\n' % (i + 1, iterations))
+            #stderr.write('Iteration %d/%d\n' % (i + 1, iterations))
             if last or (print_iterations and i % print_iterations == 0):
                 stderr.write('  content loss: %g\n' % content_loss.eval())
                 stderr.write('    style loss: %g\n' % style_loss.eval())
@@ -133,14 +114,35 @@ def stylize(network, initial, content, styles, iterations,
                         (None if last_step else i),
                         vgg.unprocess(best.reshape(shape[1:]), mean_pixel)
                     )
-def _style_layer_gram(x):
-    _, h, w, d = map(lambda i: i.value, x.get_shape())
-    x = tf.reshape(x, (-1, x))
-    return _gram_matrix(x, h * w, d)
+def _content_loss_sum(net, content):
+    return tf.nn.l2_loss(
+            net[CONTENT_LAYER] - content[CONTENT_LAYER]) / content[CONTENT_LAYER].size
+        # ###introduce modified feature map
+    	# mod = style_features[0][CONTENT_LAYER] / (
+        # 	content_features[CONTENT_LAYER] + 1e-4)
+    	# mod = np.maximum(
+        # 	np.minimum(mod, np.full(mod.shape, 5, np.float32)),
+        # 	np.full(mod.shape, 0.7, np.float32))
+    	# mod = content_features[CONTENT_LAYER] * mod
+        #
+        # content_loss = content_weight * (2 * tf.nn.l2_loss(
+        #         net[CONTENT_LAYER] - mod) /
+        #         mod.size)
 
-def _gram_matrix(x, area, depth):
-    feats = tf.reshape(x, (area, depth))
-    gram = tf.matmul(tf.transpose(feats), feats) / area
+def _style_loss_sum(net, styles, weights):
+    loss = 0
+    for layer in STYLE_LAYERS:
+        _, h, w, d = map(lambda i: i.value, net[layer].get_shape())
+        gram = _gram_matrix(net[layer], h * w, d)
+        for i in range(len(styles)):
+            style_gram = styles[i][layer]
+            layer_loss = 1./2 * tf.nn.l2_loss((gram - style_gram) / style_gram.size)
+            loss += weights[i] * layer_loss
+    return loss
+
+def _gram_matrix(x, area, number):
+    feats = tf.reshape(x, (area, number))
+    gram = tf.matmul(tf.transpose(feats), feats)
     return gram
 
 def _tensor_size(tensor):
