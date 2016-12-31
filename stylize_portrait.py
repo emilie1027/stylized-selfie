@@ -131,13 +131,15 @@ def _content_loss_sum(net, content):
 
 def _style_loss_sum(net, styles, weights):
     loss = 0
-    for layer in STYLE_LAYERS:
-        _, h, w, d = map(lambda i: i.value, net[layer].get_shape())
-        gram = _gram_matrix(net[layer], h * w, d)
-        for i in range(len(styles)):
+    for i in range(len(styles)):
+        style_loss = []
+        for layer in STYLE_LAYERS:
+            _, h, w, d = map(lambda i: i.value, net[layer].get_shape())
+            gram = _gram_matrix(net[layer], h * w, d)
             style_gram = styles[i][layer]
-            layer_loss = 1./2 * tf.nn.l2_loss((gram - style_gram) / style_gram.size)
-            loss += weights[i] * layer_loss
+            style_loss.append(
+                1./2 * tf.nn.l2_loss((gram - style_gram) / style_gram.size))
+        loss += weights[i] * reduce(tf.add, style_loss)
     return loss
 
 def _gram_matrix(x, area, number):
