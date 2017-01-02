@@ -409,6 +409,37 @@ def mask_style_layer(a, x, mask_img):
   x = tf.mul(x, mask)
   return a, x
 
+def inner_regions(content_mask_names, style_mask_names, width, height):
+    regions = []
+    for cname, sname in zip(content_mask_names, style_mask_names):
+        cpath = os.path.join(args.content_img_dir, cname)
+        spath = os.path.join(args.content_img_dir, sname)
+        cmask = cv2.imread(cpath, cv2.IMREAD_GRAYSCALE)
+        smask = cv2.imread(spath, cv2.IMREAD_GRAYSCALE)
+        check_image(cmask, cpath)
+        check_image(smask, spath)
+        cmask = cv2.resize(cmask, dsize=(width, height), interpolation=cv2.INTER_LINEAR)
+        smask = cv2.resize(smask, dsize=(width, height), interpolation=cv2.INTER_LINEAR)
+        mask = cv2.bitwise_and(cmask, smask)
+        mask = mask.astype(np.float32)
+        regions.append(mask)
+    return regions
+
+def inner_region_style_layer(x, masks):
+    _, h, w, d = x.get_shape()
+    regions = []
+    for mask in masks:
+        mask = tf.convert_to_tensor(mask)
+        tensors = []
+        # for each filter in the layer
+        for _ in range(d.value):
+            tensors.append(mask)
+        mask = tf.pack(tensors, axis=2)
+        mask = tf.pack(mask, axis=0)
+        mask = tf.expand_dims(mask, 0)
+        regions.append(tf.mul(x, mask))
+    return regions
+
 def region_style_layer(x, mask_names):
     _, h, w, d = x.get_shape()
     regions = []
@@ -439,8 +470,13 @@ def sum_region_style_losses(sess, net, style_imgs):
       # x is the layer output of style image
       x = net[layer]
       a = tf.convert_to_tensor(a)
-      a_regions = region_style_layer(a, content_regions)
-      x_regions = region_style_layer(x, style_regions)
+      _, h, w, d = x.get_shape()
+      ### use common region as space control
+      regions = inner_regions(content_regions, style_regions, w, h)
+      a_regions = inner_region_style_layer(a, regions)
+      x_regions = inner_region_style_layer(x, regions)
+      #a_regions = region_style_layer(a, content_regions)
+      #x_regions = region_style_layer(x, style_regions)
       style_loss += region_style_loss(a_regions, x_regions) * weight
       style_loss /= float(len(args.style_layers))
   return style_loss
