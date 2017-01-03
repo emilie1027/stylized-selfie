@@ -409,6 +409,22 @@ def mask_style_layer(a, x, mask_img):
   x = tf.mul(x, mask)
   return a, x
 
+def region_style_layer(x, mask_names):
+    _, h, w, d = x.get_shape()
+    regions = []
+    for mask_name in mask_names:
+        mask = get_mask_image(mask_name, w.value, h.value)
+        mask = tf.convert_to_tensor(mask)
+        tensors = []
+    # for each filter in the layer
+        for _ in range(d.value):
+           tensors.append(mask)
+        mask = tf.pack(tensors, axis=2)
+        mask = tf.pack(mask, axis=0)
+        mask = tf.expand_dims(mask, 0)
+        regions.append(tf.mul(x, mask))
+    return regions
+
 def inner_regions(content_mask_names, style_mask_names, width, height):
     regions = []
     for cname, sname in zip(content_mask_names, style_mask_names):
@@ -440,22 +456,6 @@ def inner_region_style_layer(x, masks):
         regions.append(tf.mul(x, mask))
     return regions
 
-def region_style_layer(x, mask_names):
-    _, h, w, d = x.get_shape()
-    regions = []
-    for mask_name in mask_names:
-      mask = get_mask_image(mask_name, w.value, h.value)
-      mask = tf.convert_to_tensor(mask)
-      tensors = []
-      # for each filter in the layer
-      for _ in range(d.value):
-          tensors.append(mask)
-      mask = tf.pack(tensors, axis=2)
-      mask = tf.pack(mask, axis=0)
-      mask = tf.expand_dims(mask, 0)
-      regions.append(tf.mul(x, mask))
-    return regions
-
 def sum_region_style_losses(sess, net, style_imgs):
   content_regions = args.content_regions
   style_regions = args.style_regions
@@ -470,15 +470,15 @@ def sum_region_style_losses(sess, net, style_imgs):
       # x is the layer output of style image
       x = net[layer]
       a = tf.convert_to_tensor(a)
-      _, h, w, d = x.get_shape()
       ### use common region as space control
-      regions = inner_regions(content_regions, style_regions, w, h)
+      _, h, w, d = x.get_shape()
+      regions = inner_regions(content_regions, style_regions, w.value, h.value)
       a_regions = inner_region_style_layer(a, regions)
       x_regions = inner_region_style_layer(x, regions)
       #a_regions = region_style_layer(a, content_regions)
       #x_regions = region_style_layer(x, style_regions)
       style_loss += region_style_loss(a_regions, x_regions) * weight
-      style_loss /= float(len(args.style_layers))
+  style_loss /= float(len(args.style_layers))
   return style_loss
 
 def sum_masked_style_losses(sess, net, style_imgs):
@@ -686,6 +686,7 @@ def stylize(content_img, style_imgs, init_img, frame=None):
     L_total  = alpha * L_content
     L_total += beta  * L_style
     L_total += theta * L_tv
+
 
     # video temporal loss
     if args.video and frame > 1:
