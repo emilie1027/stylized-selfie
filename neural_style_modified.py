@@ -431,6 +431,8 @@ def region_style_layer(x, mask_names):
 
 def inner_regions(content_mask_names, style_mask_names, width, height):
     regions = []
+    cregions = []
+    sregions = []
     for cname, sname in zip(content_mask_names, style_mask_names):
         cpath = os.path.join(args.content_img_dir, cname)
         spath = os.path.join(args.content_img_dir, sname)
@@ -443,7 +445,10 @@ def inner_regions(content_mask_names, style_mask_names, width, height):
         mask = cv2.bitwise_and(cmask, smask)
         mask = mask.astype(np.float32)
         regions.append(mask)
-    return regions
+        cregions.append(cmask)
+        sregions.append(smask)
+    #return regions
+    return cregions, sregions
 
 def inner_region_style_layer(x, masks):
     _, h, w, d = x.get_shape()
@@ -470,18 +475,21 @@ def sum_region_style_losses(sess, net, style_imgs):
   #override input with style image, thus net stores style feature maps
   sess.run(net['input'].assign(img))
   for layer, weight in zip(args.style_layers, args.style_layer_weights):
-      # a is the layer output of target image
+      # net[layer] in a and x are same here. However, sess.run() computes the
+      #   net[layer] using img as net['input'], so a is the layer output of
+      #   style image
       a = sess.run(net[layer])
-      # x is the layer output of style image
+      # x is the layer output of target image
       x = net[layer]
       a = tf.convert_to_tensor(a)
       ### use common region as space control
-      #_, h, w, d = x.get_shape()
+      _, h, w, d = x.get_shape()
       #regions = inner_regions(content_regions, style_regions, w.value, h.value)
-      #a_regions = inner_region_style_layer(a, regions)
-      #x_regions = inner_region_style_layer(x, regions)
-      a_regions = region_style_layer(a, content_regions)
-      x_regions = region_style_layer(x, style_regions)
+      #cregions, sregions = inner_regions(content_regions, style_regions, w.value, h.value)
+      #a_regions = inner_region_style_layer(a, cregions)
+      #x_regions = inner_region_style_layer(x, sregions)
+      a_regions = region_style_layer(a, style_regions)
+      x_regions = region_style_layer(x, content_regions)
       style_loss += region_style_loss(a_regions, x_regions, regions_weights) * weight
   style_loss /= float(len(args.style_layers))
   return style_loss
