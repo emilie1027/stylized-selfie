@@ -113,9 +113,9 @@ def parse_args():
     default=None,
     help='Filenames of masks that could segment a style image and turn each region into different styles')
 
-  parser.add_argument('--regions_weights', nargs='+', type=float,
-    default=[0.5, 0.5],
-    help='Contributions (weights) of each segmentation to loss. (default: %(default)s)')
+  parser.add_argument('--region_erosion', type=int,
+    default=0,
+    help='erode the region mask to create good result')
 
   parser.add_argument('--style_mask', action='store_true',
     help='Transfer the style to masked regions.')
@@ -383,17 +383,6 @@ def style_layer_loss(a, x):
   loss = (1./(4 * N**2 * M**2)) * tf.reduce_sum(tf.pow((G - A), 2))
   return loss
 
-def region_style_loss(a_regions, x_regions, weights):
-    loss = 0.
-    for a, x, weight in zip(a_regions, x_regions, weights):
-        _, h, w, d = a.get_shape()
-        M = h.value * w.value
-        N = d.value
-        A = gram_matrix(a, M, N)
-        G = gram_matrix(x, M, N)
-        loss += (1./(4 * N**2 * M**2)) * tf.reduce_sum(tf.pow((G - A), 2)) * weight
-    return loss
-
 def gram_matrix(x, area, depth):
   F = tf.reshape(x, (area, depth))
   G = tf.matmul(tf.transpose(F), F)
@@ -413,26 +402,22 @@ def mask_style_layer(a, x, mask_img):
   x = tf.mul(x, mask)
   return a, x
 
-def region_style_layer(x, mask_names):
+def region_style_layer(x, mask_name):
     _, h, w, d = x.get_shape()
-    regions = []
-    for mask_name in mask_names:
-        mask = get_mask_image(mask_name, w.value, h.value)
-        mask = tf.convert_to_tensor(mask)
-        tensors = []
+    mask = get_mask_image(mask_name, w.value, h.value)
+    mask = tf.convert_to_tensor(mask)
+    tensors = []
     # for each filter in the layer
-        for _ in range(d.value):
-           tensors.append(mask)
-        mask = tf.pack(tensors, axis=2)
-        mask = tf.pack(mask, axis=0)
-        mask = tf.expand_dims(mask, 0)
-        regions.append(tf.mul(x, mask))
-    return regions
+    for _ in range(d.value):
+       tensors.append(mask)
+    mask = tf.pack(tensors, axis=2)
+    mask = tf.pack(mask, axis=0)
+    mask = tf.expand_dims(mask, 0)
+    x = tf.mul(x, mask)
+    return x
 
 def inner_regions(content_mask_names, style_mask_names, width, height):
     regions = []
-    cregions = []
-    sregions = []
     for cname, sname in zip(content_mask_names, style_mask_names):
         cpath = os.path.join(args.content_img_dir, cname)
         spath = os.path.join(args.content_img_dir, sname)
@@ -445,10 +430,7 @@ def inner_regions(content_mask_names, style_mask_names, width, height):
         mask = cv2.bitwise_and(cmask, smask)
         mask = mask.astype(np.float32)
         regions.append(mask)
-        cregions.append(cmask)
-        sregions.append(smask)
-    #return regions
-    return cregions, sregions
+    return regions
 
 def inner_region_style_layer(x, masks):
     _, h, w, d = x.get_shape()
@@ -466,33 +448,30 @@ def inner_region_style_layer(x, masks):
     return regions
 
 def sum_region_style_losses(sess, net, style_imgs):
-  content_regions = args.content_regions
-  style_regions = args.style_regions
-  regions_weights = args.regions_weights
-  #assume there is only one style image
-  img = style_imgs[0]
-  style_loss = 0.
-  #override input with style image, thus net stores style feature maps
-  sess.run(net['input'].assign(img))
-  for layer, weight in zip(args.style_layers, args.style_layer_weights):
-      # net[layer] in a and x are same here. However, sess.run() computes the
-      #   net[layer] using img as net['input'], so a is the layer output of
-      #   style image
-      a = sess.run(net[layer])
-      # x is the layer output of target image
-      x = net[layer]
-      a = tf.convert_to_tensor(a)
-      ### use common region as space control
-      _, h, w, d = x.get_shape()
-      #regions = inner_regions(content_regions, style_regions, w.value, h.value)
-      #cregions, sregions = inner_regions(content_regions, style_regions, w.value, h.value)
-      #a_regions = inner_region_style_layer(a, cregions)
-      #x_regions = inner_region_style_layer(x, sregions)
-      a_regions = region_style_layer(a, style_regions)
-      x_regions = region_style_layer(x, content_regions)
-      style_loss += region_style_loss(a_regions, x_regions, regions_weights) * weight
-  style_loss /= float(len(args.style_layers))
-  return style_loss
+    total_style_loss = 0.
+    weights = args.style_imgs_weights
+    content_regions = args.content_regions
+    style_regions = args.style_regions
+    for img, img_weight, content_region, style_region in zip(
+            style_imgs, weights, content_regions, style_regions):
+        style_loss = 0.
+        #override input with style image, thus net stores style feature maps
+        sess.run(net['input'].assign(img))
+        for layer, weight in zip(args.style_layers, args.style_layer_weights):
+            # net[layer] in a and x are same here. However, sess.run() computes the
+            #   net[layer] using img as net['input'], so a is the layer output of
+            #   style image
+            a = sess.run(net[layer])
+            # x is the layer output of target image
+            x = net[layer]
+            a = tf.convert_to_tensor(a)
+            a_region = region_style_layer(a, style_region)
+            x_region = region_style_layer(x, content_region)
+            style_loss += style_layer_loss(a_region, x_region) * weight
+        style_loss /= float(len(args.style_layers))
+        total_style_loss += (style_loss * img_weight)
+    total_style_loss /= float(len(style_imgs))
+    return total_style_loss
 
 def sum_masked_style_losses(sess, net, style_imgs):
   total_style_loss = 0.
@@ -881,6 +860,12 @@ def get_mask_image(mask_img, width, height):
   img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
   check_image(img, path)
   img = cv2.resize(img, dsize=(width, height), interpolation=cv2.INTER_LINEAR)
+  ### erode the mask
+  erosion = args.region_erosion
+  if erosion > 0:
+    kernel = np.ones((erosion,erosion),np.uint8)
+    img = cv2.erode(img, kernel, iterations = 1)
+
   img = img.astype(np.float32)
   mx = np.amax(img)
   img /= mx
