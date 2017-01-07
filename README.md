@@ -1,16 +1,9 @@
 # neural-style
 
-An implementation of [neural style][paper] in TensorFlow.
+An implementation of [neural style][paper] with spatial control in TensorFlow inspired by two repositories [neural style][neural-style] and [neural style][neural-style-tf].
 
-This implementation is a lot simpler than a lot of the other ones out there,
-thanks to TensorFlow's really nice API and [automatic differentiation][ad].
+It supports spatial control, color control, L-BFGS[l-bfgs] and adam optimization.
 
-TensorFlow doesn't support [L-BFGS][l-bfgs] (which is what the original authors
-used), so we use [Adam][adam]. This may require a little bit more
-hyperparameter tuning to get nice results.
-
-**See [here][lengstrom-fast-style-transfer] for an implementation of [fast
-(feed-forward) neural style][fast-neural-style] in TensorFlow.**
 
 ## Running
 
@@ -28,49 +21,33 @@ Running it for 500-2000 iterations seems to produce nice results. With certain
 images or output sizes, you might need some hyperparameter tuning (especially
 `--content-weight`, `--style-weight`, and `--learning-rate`).
 
-The following example was run for 1000 iterations to produce the result (with
-default parameters):
+The following example was run for 400 iterations with default parameters to produce the result:
 
-![output](examples/1-output.jpg)
+![output](experiments/spatial-control/result_original.png)
 
-These were the input images used (me sleeping at a hackathon and Starry Night):
+With spatial control:
 
-![input-content](examples/1-content.jpg)
+![output](experiments/spatial-control/result_spatial_control.png)
 
-![input-style](examples/1-style.jpg)
+I used self-portrait, Umberto Boccioni, 1905 as style image :
 
-## Example 2
+![input-style](experiments/spatial-control/Boccioni.jpg)
 
-The following example demonstrates style blending, and was run for 1000
-iterations to produce the result (with style blend weight parameters 0.8 and
-0.2):
 
-![output](examples/2-output.jpg)
+## Requirements :
+* [tensorflow](https://github.com/tensorflow/tensorflow)
+* [opencv](http://opencv.org/downloads.html)
 
-The content input image was a picture of the Stata Center at MIT:
+#### Optional (but recommended) dependencies:
+* [CUDA](https://developer.nvidia.com/cuda-downloads) 7.5+
+* [cuDNN](https://developer.nvidia.com/cudnn) 5.0+
 
-![input-content](examples/2-content.jpg)
-
-The style input images were Picasso's "Dora Maar" and Starry Night, with the
-Picasso image having a style blend weight of 0.8 and Starry Night having a
-style blend weight of 0.2:
-
-![input-style](examples/2-style1.jpg)
-![input-style](examples/2-style2.jpg)
-
-## Requirements
-
-* [TensorFlow](https://www.tensorflow.org/versions/master/get_started/os_setup.html#download-and-setup)
-* [NumPy](https://github.com/numpy/numpy/blob/master/INSTALL.rst.txt)
-* [SciPy](https://github.com/scipy/scipy/blob/master/INSTALL.rst.txt)
-* [Pillow](http://pillow.readthedocs.io/en/3.3.x/installation.html#installation)
-* [Pre-trained VGG network][net] (MD5 `8ee3263992981a1d26e73b3ca028a123`) - put it in the top level of this repository, or specify its location using the `--network` option.
+#### After installing the dependencies: 
+* Download the [VGG-19 model weights](http://www.vlfeat.org/matconvnet/pretrained/) (see the "VGG-VD models from the *Very Deep Convolutional Networks for Large-Scale Visual Recognition* project" section). More info about the VGG-19 network can be found [here](http://www.robots.ox.ac.uk/~vgg/research/very_deep/).
+* After downloading, copy the weights file `imagenet-vgg-verydeep-19.mat` to the project directory.(https://www.tensorflow.org/versions/master/get_started/os_setup.html#download-and-setup)
 
 ## Citation
 
-If you use this implementation in your work, please cite the following:
-
-```
 @misc{athalye2015neuralstyle,
   author = {Anish Athalye},
   title = {Neural Style},
@@ -84,7 +61,8 @@ If you use this implementation in your work, please cite the following:
 
 Copyright (c) 2015-2016 Anish Athalye. Released under GPLv3. See
 [LICENSE.txt][license] for details.
-
+[neural-style]: https://github.com/anishathalye/neural-style.git
+[neural-style-tf]: https://github.com/cysmith/neural-style-tf.git
 [net]: http://www.vlfeat.org/matconvnet/models/beta16/imagenet-vgg-verydeep-19.mat
 [paper]: http://arxiv.org/pdf/1508.06576v2.pdf
 [l-bfgs]: https://en.wikipedia.org/wiki/Limited-memory_BFGS
