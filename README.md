@@ -23,15 +23,15 @@ images or output sizes, you might need some hyperparameter tuning (especially
 
 The following example was run for 400 iterations with default parameters to produce the result:
 
-![output](experiments/spatial-control/result_original.png)
+![output](experiments/spatial-control/yyf/result_original.png)
 
 With spatial control:
 
-![output](experiments/spatial-control/result_spatial_control.png)
+![output](experiments/spatial-control/yyf/result_space_control.png)
 
 I used self-portrait, Umberto Boccioni, 1905 as style image :
 
-![input-style](experiments/spatial-control/Boccioni.jpg)
+![input-style](experiments/spatial-control/yyf/Boccioni.jpg)
 
 
 ## Requirements :
